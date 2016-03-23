@@ -8,14 +8,21 @@
 //}
 
 // AWS DB 계정 config
+//var config = {
+//    "host": process.env.BANG_DB_SERVER,
+//    "port": process.env.BANG_DB_PORT,
+//    "user": process.env.BANG_DB_USERNAME,
+//    "password": process.env.BANG_DB_PASSWORD,
+//    "database": process.env.BANG_DB,
+//    "ssl": "Amazon RDS",
+//    "debug": true
+//}
 var config = {
-    "host": process.env.GREEN_DB_SERVER,
-    "port": process.env.GREEN_DB_PORT,
-    "user": process.env.GREEN_DB_USERNAME,
-    "password": process.env.GREEN_DB_PASSWORD,
-    "database": process.env.GREEN_DB,
-    "ssl": "Amazon RDS",
-    "debug": true
-}
+    "host": "bangserver.czdglqff2woq.ap-northeast-2.rds.amazonaws.com",
+    "user": "bangadmin",
+    "password": "00003611",
+    "debug": true,
+    "database" :"bangdb"
+};
 
 module.exports = config;

@@ -6,7 +6,7 @@ var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 
 global.pool = require('./config/dbpool');
-global.serverKey = process.env.GREEN_SERVER_KEY;
+global.serverKey = process.env.BANG_SERVER_KEY;
 
 var totalexcel = require('./routes/totalexcel');
 

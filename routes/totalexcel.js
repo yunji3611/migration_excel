@@ -10,12 +10,13 @@ var s3Config = require('../config/s3Config');
 var bcrypt = require('bcrypt');
 var sqlAes = require('./sqlAES');
 var XLSX = require('xlsx');
+var hexkey =  process.env.HEX_KEY;
 
 sqlAes.setServerKey(serverKey);
 
 router.get('/', function(req, res, next) {
 
-  var workbook = XLSX.readFile(path.join(__dirname, '../uploads/excel', 'datatable.xlsx'));
+  var workbook = XLSX.readFile(path.join(__dirname, '../uploads/excel', 'bangDB.xlsx'));
   var sheet;
 
   function getConnection(callback) {
@@ -39,32 +40,28 @@ router.get('/', function(req, res, next) {
     })
   }
 
-  function insertIparty(salt, connection, callback){
-    var sql = "insert into iparty(username, hashpassword, nickname, partytype, name, phone) " +
-        "values(?, ?, ?, ?, " +
-        sqlAes.encrypt(2) +
-        ")";
-
+  // user
+  function insertMember(salt, connection, callback){
     async.each(sheet, function(item, cb){
       //console.log("test : " + item);
       //console.log("변형되어야 할 값 1: " + item.hashpassword);
-      bcrypt.hash(item.hashpassword, salt, function(err, hashPassword){
+      var sql = "insert into bangdb.user(username, email, password) "+
+                 "values (?, aes_encrypt(" + connection.escape(item.email) + ", unhex(" + connection.escape(hexkey) + ")), ?) ";
+      bcrypt.hash(item.password, salt, function(err, hashPassword){
         if(err){
           callback(err);
         } else {
           //console.log("변형되어야 할 값 : " + sheet[i].hashpassword);
-          connection.query(sql, [item.username, hashPassword, item.nickname, item.partytype, item.name, item.phone], function(err, result) {
+          connection.query(sql, [item.username, hashPassword], function(err, result) {
             if(err){
               callback(err);
             } else {
               var result = {
                 "id" : result.insertId,
-                "partytype" : item.partytype,
-                "name" : item.name,
-                "phone" : item.phone,
+                "username" : item.username,
+                "email" : item.item,
                 "password" : hashPassword
-              }
-              //console.log(result);
+              };
               cb(null, result);
             }
           });
@@ -82,20 +79,48 @@ router.get('/', function(req, res, next) {
     })
   }
 
-  function insertBoard(connection, callback) {
-    var resultArr = [];
+  // color
+  /*function insertBoard(connection, callback) {
     async.eachSeries(sheet, function (item, callback) {
-      var sql = "insert into board(name)" +
-        "values(?)"
-      connection.query(sql, [item.name], function (err, result) {
+      var sql = "insert into bangdb.color(name, code) " +
+                "values(?, ?)";
+      connection.query(sql, [item.name, item.code], function (err, result) {
         if (err) {
-          var err = new Error('Board 데이터 생성에 실패하였습니다.');
+          var err = new Error('color 데이터 생성에 실패하였습니다.');
+          callback(err);
         } else {
           var result = {
             "id ": result.insertId,
-            "name": item.name
-          }
-          resultArr.push(result);
+            "name": item.name,
+            "code": item.code
+          };
+          callback(null);
+        }
+      });
+    }, function (err) {
+      connection.release();
+      if (err) {
+        callback(err);
+      } else {
+        callback(null);
+      }
+    });
+  }*/
+
+  // hashtag
+  function inserttag(connection, callback) {
+    async.eachSeries(sheet, function (item, callback) {
+      var sql = "insert into bangdb.hashtag(tag) " +
+               "values(?)";
+      connection.query(sql, [item.tag], function (err, result) {
+        if (err) {
+          var err = new Error('hashtag 데이터 생성에 실패하였습니다.');
+          callback(err);
+        } else {
+          var result = {
+            "id ": result.insertId,
+            "tag": item.tag
+          };
         }
         callback(null);
       });
@@ -104,24 +129,55 @@ router.get('/', function(req, res, next) {
       if (err) {
         callback(err);
       } else {
-        console.log("Borad Data insert: " + resultArr);
-        callback(null, resultArr)
+        callback(null);
       }
     });
   }
 
-  function insertGreenItems(connection, callback) {
+  // post
+  function insertPost(connection, callback) {
+    async.eachSeries(sheet, function (item, callback) {
+      var sql = "insert into bangdb.post(content, category, package, user_id, month_price) " +
+          "values(?, ?, ?, ?, ?)";
+      connection.query(sql, [item.content, item.category, item.package, item.user_id, item.month_price], function (err, result) {
+        if (err) {
+          var err = new Error('post 데이터 생성에 실패하였습니다.');
+          callback(err);
+        } else {
+          var result = {
+            "id ": result.insertId,
+            "content": item.content,
+            "category": item.category,
+            "package": item.package,
+            "user_id": item.user_id,
+            "month_price": item.month_price
+          };
+          callback(null);
+        }
+      });
+    }, function (err) {
+      connection.release();
+      if (err) {
+        callback(err);
+      } else {
+        callback(null);
+      }
+    });
+  }
+
+  //furniture
+  function insertFurniture(connection, callback) {
     var resultArr = [];
     async.eachSeries(sheet, function (item, callback) {
       var location = "";
-      var mimeType = mime.lookup(item.picture);
-      var filepath = path.join(__dirname, '../uploads/items', item.picture)
+      var mimeType = mime.lookup(item.f_ori_photo_name);
+      var filepath = path.join(__dirname, '../uploads/furnitures', item.f_ori_photo_name);
       fs.stat(filepath, function (err, stats) { //경로에 파일이 있는지 확인한다.
         if (err) {
-          console.log('요청하신 파일' + item.picture + '이(가) 존재하지 않습니다.');
+          console.log('요청하신 파일' + item.f_ori_photo_name + '이(가) 존재하지 않습니다.');
           callback(null);
         } else {
-          var modifiedfile = uuid.v4() + item.picture;
+          var modifiedfile = uuid.v4() + item.f_ori_photo_name;
           console.log(filepath);
           var body = fs.createReadStream(filepath);
           var s3 = new AWS.S3({
@@ -130,7 +186,7 @@ router.get('/', function(req, res, next) {
             "region": s3Config.region,
             "params": {
               "Bucket": s3Config.bucket,
-              "Key": s3Config.itemsDir + "/" + modifiedfile,
+              "Key": s3Config.posts.imageDir + "/" + modifiedfile,
               "ACL": s3Config.imageACL,
               "ContentType": mimeType //mime.lookup
             }
@@ -145,18 +201,15 @@ router.get('/', function(req, res, next) {
                 callback(err);
               } else {
                 location = data.Location;
-                fs.unlink(filepath, function () {
-                  console.log(filepath + " 파일이 삭제되었습니다...");
-                });
-                var sql = "insert into greenitems(name, description, price, picture, sdate, edate) " +
-                  "values (?, ?, ?, ?, ?, ?)";
-                connection.query(sql, [item.name, item.description, item.price, location, item.sdate, item.edate], function (err, result) {
+                //fs.unlink(filepath, function () {
+                //  console.log(filepath + " 파일이 삭제되었습니다...");
+                //});
+                var sql = "insert into bangdb.furniture(price, brand, name, link, color_id, no, size, post_id, f_photo_path, f_mf_photo_name, f_ori_photo_name ) " +
+                  "values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                connection.query(sql, [item.price, item.brand, item.name, item.link, item.color_id, item.no, item.size, item.post_id, location, modifiedfile, item.f_ori_photo_name], function (err, result) {
                   if (err) {
-                    connection.release();
-                    console.log('왜? 애러남?');
                     callback(err);
                   } else {
-                    console.log('장난침?');
                     resultArr.push(result.insertId);
                     callback(null);
                   }
@@ -166,31 +219,117 @@ router.get('/', function(req, res, next) {
         }
       });
     }, function (err) {
+      connection.release();
         if (err) {
-          connection.release();
           console.log("fail!!!");
           callback(err);
         } else {
-          connection.release();
           console.log("success!!!");
-          callback(null, resultArr);
+          callback(null);
         }
     });
   }
 
 
-  function insertPhotos(connection, callback) {
+
+
+  // questionary
+  function insertQuestionary(connection, callback) {
+    async.eachSeries(sheet, function (item, callback) {
+      var sql = "insert into bangdb.questionary(id, question) " +
+          "values(?, ?)";
+      connection.query(sql, [item.id, item.question], function (err, result) {
+        if (err) {
+          var err = new Error('post 데이터 생성에 실패하였습니다.');
+          callback(err);
+        } else {
+          var result = {
+            "id ": item.id,
+            "question": item.question
+          };
+          callback(null);
+        }
+      });
+    }, function (err) {
+      connection.release();
+      if (err) {
+        callback(err);
+      } else {
+        callback(null);
+      }
+    });
+  }
+
+  // item
+  function insertItem(connection, callback) {
+    async.eachSeries(sheet, function (item, callback) {
+      var sql = "insert into bangdb.item(questionary_id, item_seq, item) " +
+                "values(?, ?, ?)";
+      connection.query(sql, [item.questionary_id, item.item_seq, item.item], function (err, result) {
+        if (err) {
+          var err = new Error('post 데이터 생성에 실패하였습니다.');
+          callback(err);
+        } else {
+          var result = {
+            "questionary_id": item.questionary_id,
+            "item_id": item.item_seq,
+            "item": item.item
+          };
+          callback(null);
+        }
+      });
+    }, function (err) {
+      connection.release();
+      if (err) {
+        callback(err);
+      } else {
+        callback(null);
+      }
+    });
+  }
+
+  // hashtag_has_post
+  function insertHashPost(connection, callback) {
+    async.eachSeries(sheet, function (item, callback) {
+      var sql = "insert into bangdb.hashtag_has_post(hashtag_id, post_id) " +
+                 "values(?, ?)";
+      connection.query(sql, [item.hashtag_id, item.post_id], function (err, result) {
+        if (err) {
+          var err = new Error('post 데이터 생성에 실패하였습니다.');
+          callback(err);
+        } else {
+          var result = {
+            "hashtag_id ": item.hashtag_id,
+            "post_id": item.post_id
+          };
+          callback(null);
+        }
+
+      });
+    }, function (err) {
+      connection.release();
+      if (err) {
+        callback(err);
+      } else {
+        callback(null);
+      }
+    });
+  }
+
+
+  // file
+  function insertFile(connection, callback) {
     var resultArr = [];
     async.eachSeries(sheet, function (item, callback) {
       var location = "";
-      var mimeType = mime.lookup(item.originalfilename);
-      var filepath = path.join(__dirname, '../uploads/photos', item.originalfilename)
+      var mimeType = mime.lookup(item.original_name);
+      var filepath = path.join(__dirname, '../uploads/files', item.original_name)
       fs.stat(filepath, function (err, stats) { //경로에 파일이 있는지 확인한다.
         if (err) {
-          console.log('요청하신 파일' + item.originalfilename + '이(가) 존재하지 않습니다.');
+          console.log('요청하신 파일' + item.f_ori_photo_name + '이(가) 존재하지 않습니다.');
           callback(null);
         } else {
-          var modifiedfile = uuid.v4() + item.originalfilename;
+          var modifiedfile = uuid.v4() + item.original_name;
           console.log(filepath);
           var body = fs.createReadStream(filepath);
           var s3 = new AWS.S3({
@@ -199,39 +338,37 @@ router.get('/', function(req, res, next) {
             "region": s3Config.region,
             "params": {
               "Bucket": s3Config.bucket,
-              "Key": s3Config.imageDir + "/" + modifiedfile,
+              "Key": s3Config.posts.imageDir + "/" + modifiedfile,
               "ACL": s3Config.imageACL,
               "ContentType": mimeType //mime.lookup
             }
           });
           s3.upload({"Body": body}) //pipe역할
-            .on('httpUploadProgress', function (event) {
-              console.log(event);
-            })
-            .send(function (err, data) {
-              if (err) {
-                console.log(err);
-                callback(err);
-              } else {
-                location = data.Location;
-                fs.unlink(filepath, function () {
-                  console.log(filepath + " 파일이 삭제되었습니다...");
-                });
-                var sql = "insert into photos(photourl, uploaddate, originalfilename, modifiedfilename, phototype, refer_type, refer_id) " +
-                  "values (?, ?, ?, ?, ?, ?, ?)";
-                connection.query(sql, [location, item.uploaddate, item.originalfilename, modifiedfile, mimeType, item.refer_type, item.refer_id], function (err, result) {
-                  if (err) {
-                    connection.release();
-                    console.log('왜? 애러남?');
-                    callback(err);
-                  } else {
-                    console.log('장난침?');
-                    resultArr.push(result.insertId);
-                    callback(null);
-                  }
-                });
-              }
-            });
+              .on('httpUploadProgress', function (event) {
+                console.log(event);
+              })
+              .send(function (err, data) {
+                if (err) {
+                  console.log(err);
+                  callback(err);
+                } else {
+                  location = data.Location;
+                  //fs.unlink(filepath, function () {
+                  //  console.log(filepath + " 파일이 삭제되었습니다...");
+                  //});
+                  var sql = "insert into bangdb.file(file_path, file_name, original_name, post_id) " +
+                      "values (?, ?, ?, ?)";
+                  connection.query(sql, [location, modifiedfile, item.original_name, item.post_id], function (err, result) {
+                    if (err) {
+                      connection.release();
+                      callback(err);
+                    } else {
+                      resultArr.push(result.insertId);
+                      callback(null);
+                    }
+                  });
+                }
+              });
         }
       });
     }, function (err) {
@@ -242,319 +379,7 @@ router.get('/', function(req, res, next) {
       } else {
         connection.release();
         console.log("success!!!");
-        callback(null, resultArr);
-      }
-    });
-  }
-
-  function insertBg(connection, callback) {
-    var resultArr = [];
-    async.eachSeries(sheet, function (item, callback) {
-      var location = "";
-      var mimeType = mime.lookup(item.file);
-      var filepath = path.join(__dirname, '../uploads/bg', item.file)
-      fs.stat(filepath, function (err, stats) { //경로에 파일이 있는지 확인한다.
-        if (err) {
-          console.log('요청하신 파일' + item.file + '이(가) 존재하지 않습니다.');
-          callback(null);
-        } else {
-          var modifiedfile = uuid.v4() + item.file;
-          console.log(filepath);
-          var body = fs.createReadStream(filepath);
-          var s3 = new AWS.S3({
-            "accessKeyId": s3Config.key,
-            "secretAccessKey": s3Config.secret,
-            "region": s3Config.region,
-            "params": {
-              "Bucket": s3Config.bucket,
-              "Key": s3Config.imageDir + "/" + modifiedfile,
-              "ACL": s3Config.imageACL,
-              "ContentType": mimeType //mime.lookup
-            }
-          });
-          s3.upload({"Body": body}) //pipe역할
-            .on('httpUploadProgress', function (event) {
-              console.log(event);
-            })
-            .send(function (err, data) {
-              if (err) {
-                console.log(err);
-                callback(err);
-              } else {
-                location = data.Location;
-                fs.unlink(filepath, function () {
-                  console.log(filepath + " 파일이 삭제되었습니다...");
-                });
-                var sql = "insert into background(name, path) " +
-                  "values (?, ?)";
-                connection.query(sql, [item.name, location], function (err, result) {
-                  if (err) {
-                    connection.release();
-                    console.log('왜? 애러남?');
-                    callback(err);
-                  } else {
-                    console.log('장난침?');
-                    resultArr.push(result.insertId);
-                    callback(null);
-                  }
-                });
-              }
-            });
-        }
-      });
-    }, function (err) {
-      if (err) {
-        connection.release();
-        console.log("fail!!!");
-        callback(err);
-      } else {
-        connection.release();
-        console.log("success!!!");
-        callback(null, resultArr);
-      }
-    });
-  }
-
-  function insertlHistory(connection, callback) {
-    var resultArr = [];
-    async.eachSeries(sheet, function (item, callback) {
-      var sql = "insert into leafhistory(applydate, leaftype, changedamount, iparty_id)" +
-        "values(?, ?, ?, ?)";
-      connection.query(sql, [item.applydate, item.leaftype, item.changedamount, item.iparty_id], function (err, result) {
-        if (err) {
-          var err = new Error('leafhistory 데이터 생성에 실패하였습니다.');
-        } else {
-          var result = {
-            "id ": result.insertId,
-          }
-          resultArr.push(result);
-        }
         callback(null);
-      });
-    }, function (err) {
-      connection.release();
-      if (err) {
-        callback(err);
-      } else {
-        console.log("leafhistory Data insert: " + resultArr);
-        callback(null, resultArr)
-      }
-    });
-  }
-
-  function insertCarts(connection, callback) {
-    var resultArr = [];
-    async.eachSeries(sheet, function (item, callback) {
-      var sql = "insert into carts(greenitems_id, iparty_id, quantity)" +
-        "values(?, ?, ?)";
-      connection.query(sql, [item.greenitems_id, item.iparty_id, item.quantity], function (err, result) {
-        if (err) {
-          var err = new Error('carts 데이터 생성에 실패하였습니다.');
-        } else {
-          var result = {
-            "id ": result.insertId,
-          }
-          resultArr.push(result);
-        }
-        callback(null);
-      });
-    }, function (err) {
-      connection.release();
-      if (err) {
-        callback(err);
-      } else {
-        console.log("Carts Data insert: " + resultArr);
-        callback(null, resultArr)
-      }
-    });
-  }
-
-  function insertPromotion(connection, callback) {
-    var resultArr = [];
-    async.eachSeries(sheet, function (item, callback) {
-      var sql = "insert into ePromotion(title, c_name, sdate, edate, content, iparty_id)" +
-        "values(?, ?, ?, ?, ?, ?)";
-      connection.query(sql, [item.title, item.c_name, item.sdate, item.edate, item.content, item.iparty_id], function (err, result) {
-        if (err) {
-          var err = new Error('ePromotion 데이터 생성에 실패하였습니다.');
-        } else {
-          var result = {
-            "id": result.insertId,
-            "title" : item.title
-          }
-          resultArr.push(result);
-        }
-        callback(null);
-      });
-    }, function (err) {
-      connection.release();
-      if (err) {
-        callback(err);
-      } else {
-        console.log("ePromotion Data insert: " + resultArr);
-        callback(null, resultArr)
-      }
-    });
-  }
-
-  function inserteDiary(connection, callback) {
-    var resultArr = [];
-    async.eachSeries(sheet, function (item, callback) {
-      var sql = "insert into e_diary(iparty_id, title, content, wdatetime, background_id)" +
-        "values(?, ?, ?, ?, ?)";
-      connection.query(sql, [item.iparty_id, item.title, item.content, item.wdatetime, item.background_id], function (err, result) {
-        if (err) {
-          var err = new Error('eDiary 데이터 생성에 실패하였습니다.');
-        } else {
-          var result = {
-            "id": result.insertId,
-            "title" : item.title
-          }
-          resultArr.push(result);
-        }
-        callback(null);
-      });
-    }, function (err) {
-      connection.release();
-      if (err) {
-        callback(err);
-      } else {
-        console.log("ediary Data insert: " + resultArr);
-        callback(null, resultArr)
-      }
-    });
-  }
-
-  function insertDaddress(connection, callback){
-    var resultArr = [];
-    var sql = "insert into daddress(ad_code, iparty_id, name, receiver, phone, add_phone, address) " +
-      "values(?, ?, "  +
-      sqlAes.encrypt(5) +
-      ")";
-    async.eachSeries(sheet, function(item, cb){
-      connection.query(sql, [item.ad_code, item.iparty_id, item.name, item.receiver, item.phone, item.add_phone, item.address], function(err, result){
-        if(err){
-          cb(err);
-        } else {
-          var list = {
-            "id" : result.insertId
-          }
-          resultArr.push(list);
-          cb(null);
-        }
-      });
-    }, function(err){
-      connection.release();
-      if(err){
-        callback(err);
-      } else {
-        callback(null, resultArr);
-      }
-    });
-  }
-
-  function insertReply(connection, callback){
-    var resultArr = [];
-    var sql = "insert into reply(body, wdatetime, ediary_id, iparty_id) " +
-      "values(?, ?, ?, ?)";
-    async.eachSeries(sheet, function(item, cb){
-      connection.query(sql, [item.body, item.wdatetime, item.ediary_id, item.iparty_id], function(err, result){
-        if(err){
-          cb(err);
-        } else {
-          var result = {
-            "id" : result.insertId
-          }
-          resultArr.push(result);
-          cb(null);
-        }
-      });
-    }, function(err){
-      connection.release();
-      if(err){
-        callback(err);
-      } else {
-        callback(null, resultArr);
-      }
-    });
-  }
-
-  function insertArticle(connection, callback){
-    var resultArr = [];
-    var sql = "insert into article(title, body, wdatetime, board_id) " +
-      "values(?, ?, ?, ?)";
-    async.eachSeries(sheet, function(item, cb){
-      connection.query(sql, [item.title, item.body, item.wdatetime, item.board_id], function(err, result){
-        if(err){
-          cb(err);
-        } else {
-          var result = {
-            "id" : result.insertId
-          }
-          resultArr.push(result);
-          cb(null);
-        }
-      });
-    }, function(err){
-      connection.release();
-      if(err){
-        callback(err);
-      } else {
-        callback(null, resultArr);
-      }
-    });
-  }
-
-  function insertOrders(connection, callback){
-    var resultArr = [];
-    var sql = "insert into orders(iparty_id, date, adcode, care, receiver, phone, addphone, address) " +
-      "values(?, ?, ?, ?, " +
-      sqlAes.encrypt(4) +
-      ")";
-    async.eachSeries(sheet, function(item, cb){
-      connection.query(sql, [item.iparty_id, item.date, item.adcode, item.care, item.receiver, item.phone, item.addphone, item.address], function(err, result){
-        if(err){
-          cb(err);
-        } else {
-          var list = {
-            "id" : result.insertId
-          }
-          resultArr.push(list);
-          cb(null);
-        }
-      });
-    }, function(err){
-      connection.release();
-      if(err){
-        callback(err);
-      } else {
-        callback(null, resultArr);
-      }
-    });
-  }
-
-  function insertOrderdetails(connection, callback){
-    var resultArr = [];
-    var sql = "insert into orderdetails(order_id, quantity, greenitems_id) " +
-      "values(?, ?, ?)";
-    async.eachSeries(sheet, function(item, cb){
-      connection.query(sql, [item.order_id, item.quantity, item.greenitems_id], function(err, result){
-        if(err){
-          cb(err);
-        } else {
-          var list = {
-            "id" : result.insertId
-          }
-          resultArr.push(list);
-          cb(null);
-        }
-      });
-    }, function(err){
-      connection.release();
-      if(err){
-        callback(err);
-      } else {
-        callback(null, resultArr);
       }
     });
   }
@@ -566,33 +391,27 @@ router.get('/', function(req, res, next) {
     var worksheet = workbook.Sheets[sheet_name];
     sheet = XLSX.utils.sheet_to_json(worksheet);
 
-    if (sheet_name==="iparty"){
-      async.waterfall([getConnection, generateSalt, insertIparty], function(err, result){
+    if (sheet_name==="user"){
+      async.waterfall([getConnection, generateSalt, insertMember], function(err, result){
         if(err){
           callback(err);
         } else {
           callback(null, result);
         }
       })
-    } else if (sheet_name === "board") {
-      async.waterfall([getConnection, insertBoard], function (err, result) {
-        if (err) {
-          callback(err);
-        } else {
-          callback(null);
-        }
-      });
-    } else if (sheet_name === "greenitems") {
-      async.waterfall([getConnection, insertGreenItems], function (err, result) {
-        if (err) {
-          callback(err);
-        } else {
-          console.log(result);
-          callback(null);
-        }
-      });
-    } else if (sheet_name === "photos") {
-      async.waterfall([getConnection, insertPhotos], function (err, result) {
+    }
+    //else if (sheet_name === "color"){
+    //  async.waterfall([getConnection, insertBoard], function (err, result) {
+    //    if (err) {
+    //      callback(err);
+    //    } else {
+    //      console.log(result);
+    //      callback(null);
+    //    }
+    //  });
+    //}
+    else if (sheet_name === "hashtag"){
+      async.waterfall([getConnection, inserttag], function (err, result) {
         if (err) {
           callback(err);
         } else {
@@ -600,8 +419,8 @@ router.get('/', function(req, res, next) {
           callback(null);
         }
       });
-    } else if (sheet_name === "background"){
-      async.waterfall([getConnection, insertBg], function (err, result) {
+    }  else if (sheet_name === "post") {
+      async.waterfall([getConnection, insertPost], function (err, result) {
         if (err) {
           callback(err);
         } else {
@@ -609,8 +428,9 @@ router.get('/', function(req, res, next) {
           callback(null);
         }
       });
-    } else if (sheet_name === "leafhistory"){
-      async.waterfall([getConnection, insertlHistory], function (err, result) {
+    }
+    else if (sheet_name === "furniture") {
+      async.waterfall([getConnection, insertFurniture], function (err, result) {
         if (err) {
           callback(err);
         } else {
@@ -618,8 +438,9 @@ router.get('/', function(req, res, next) {
           callback(null);
         }
       });
-    } else if (sheet_name === "carts"){
-      async.waterfall([getConnection, insertCarts], function (err, result) {
+    }
+    else if (sheet_name === "questionary"){
+      async.waterfall([getConnection, insertQuestionary], function (err, result) {
         if (err) {
           callback(err);
         } else {
@@ -627,8 +448,8 @@ router.get('/', function(req, res, next) {
           callback(null);
         }
       });
-    } else if (sheet_name === "epromotion"){
-      async.waterfall([getConnection, insertPromotion], function (err, result) {
+    } else if (sheet_name === "item"){
+      async.waterfall([getConnection, insertItem], function (err, result) {
         if (err) {
           callback(err);
         } else {
@@ -636,8 +457,8 @@ router.get('/', function(req, res, next) {
           callback(null);
         }
       });
-    } else if (sheet_name === "ediary"){
-      async.waterfall([getConnection, inserteDiary], function (err, result) {
+    }  else if (sheet_name === "hashtag_has_post"){
+      async.waterfall([getConnection, insertHashPost], function (err, result) {
         if (err) {
           callback(err);
         } else {
@@ -645,8 +466,8 @@ router.get('/', function(req, res, next) {
           callback(null);
         }
       });
-    } else if (sheet_name === "daddress"){
-      async.waterfall([getConnection, insertDaddress], function (err, result) {
+    } else if (sheet_name === "file"){
+      async.waterfall([getConnection, insertFile], function (err, result) {
         if (err) {
           callback(err);
         } else {
@@ -654,47 +475,9 @@ router.get('/', function(req, res, next) {
           callback(null);
         }
       });
-    } else if (sheet_name === "orders"){
-      async.waterfall([getConnection, insertOrders], function (err, result) {
-        if (err) {
-          callback(err);
-        } else {
-          console.log(result);
-          callback(null);
-        }
-      });
-    } else if (sheet_name === "orderdetails"){
-      async.waterfall([getConnection, insertOrderdetails], function (err, result) {
-        if (err) {
-          callback(err);
-        } else {
-          console.log(result);
-          callback(null);
-        }
-      });
-    } else if (sheet_name === "article"){
-      async.waterfall([getConnection, insertArticle], function (err, result) {
-        if (err) {
-          callback(err);
-        } else {
-          console.log(result);
-          callback(null);
-        }
-      });
-    } else if (sheet_name === "reply"){
-      async.waterfall([getConnection, insertReply], function (err, result) {
-        if (err) {
-          callback(err);
-        } else {
-          console.log(result);
-          callback(null);
-        }
-      });
-    } else {
+    }  else {
       console.log(sheet_name + '해당 기능이 없습니다.');
     }
-
-
   }, function (err) {
     if (err) {
       next(err);
@@ -703,8 +486,6 @@ router.get('/', function(req, res, next) {
       res.json(success);
     }
   });
-
-
 });
 
 
